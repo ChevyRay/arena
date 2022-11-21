@@ -59,6 +59,11 @@ impl<T> Arena<T> {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    #[inline]
     pub fn slot_count(&self) -> usize {
         self.slots.len()
     }
@@ -76,6 +81,11 @@ impl<T> Arena<T> {
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self.values.as_mut_slice()
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.values.as_mut_ptr()
     }
 
     #[inline]
@@ -191,6 +201,16 @@ impl<T> Arena<T> {
         Some(self.values.swap_remove(removed_value))
     }
 
+    #[inline]
+    pub fn pop(&mut self) -> Option<T> {
+        let value = self.values.pop()?;
+        let slot = self.slots[self.values.len()].value_slot;
+        self.slots[slot].state = State::Free {
+            next_free: self.first_free.replace(slot),
+        };
+        Some(value)
+    }
+
     pub fn clear(&mut self) {
         if self.is_empty() {
             return;
@@ -290,6 +310,14 @@ impl<T> Arena<T> {
         Ids {
             iter: self.slots[..self.len()].iter().enumerate(),
         }
+    }
+}
+
+impl<T: Clone> Arena<T> {
+    #[inline]
+    pub fn extend_from_slice(&mut self, slice: &[T]) {
+        self.values.reserve(slice.len());
+        self.extend(slice.iter().cloned());
     }
 }
 
