@@ -11,13 +11,13 @@ fn test() {
     let d = arena.insert('D');
     let e = arena.insert('E');
 
-    println!("{:?}", arena.deref());
+    println!("{:?}", arena.as_slice());
 
-    arena.remove(c);
+    for (id, chr) in arena.pairs_mut() {
+        *chr = char::from_u32(*chr as u32 + 1).unwrap();
+    }
 
-    println!("{:?}", arena.deref());
-
-    println!("{:?}", arena.get(e));
+    println!("{:?}", arena.as_slice());
 }
 
 #[derive(Debug)]
@@ -171,6 +171,20 @@ impl<T> Arena<T> {
         }
         self.values.clear();
     }
+
+    pub fn pairs(&self) -> Pairs<'_, T> {
+        Pairs {
+            iter: self.values.iter().enumerate(),
+            slots: &self.slots,
+        }
+    }
+
+    pub fn pairs_mut(&mut self) -> PairsMut<'_, T> {
+        PairsMut {
+            iter: self.values.iter_mut().enumerate(),
+            slots: &self.slots,
+        }
+    }
 }
 
 impl<T> Deref for Arena<T> {
@@ -227,5 +241,55 @@ impl PartialOrd for ArenaId {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         (self.version, self.index).partial_cmp(&(other.version, other.index))
+    }
+}
+
+pub struct Pairs<'a, T> {
+    iter: std::iter::Enumerate<std::slice::Iter<'a, T>>,
+    slots: &'a [Slot],
+}
+
+impl<'a, T> Iterator for Pairs<'a, T> {
+    type Item = (ArenaId, &'a T);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let (index, val) = self.iter.next()?;
+        let index = self.slots[index].value_slot;
+        match &self.slots[index].state {
+            State::Used { version, .. } => Some((
+                ArenaId {
+                    version: *version,
+                    index,
+                },
+                val,
+            )),
+            _ => panic!("expected used slot"),
+        }
+    }
+}
+
+pub struct PairsMut<'a, T> {
+    iter: std::iter::Enumerate<std::slice::IterMut<'a, T>>,
+    slots: &'a [Slot],
+}
+
+impl<'a, T> Iterator for PairsMut<'a, T> {
+    type Item = (ArenaId, &'a mut T);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let (index, val) = self.iter.next()?;
+        let index = self.slots[index].value_slot;
+        match &self.slots[index].state {
+            State::Used { version, .. } => Some((
+                ArenaId {
+                    version: *version,
+                    index,
+                },
+                val,
+            )),
+            _ => panic!("expected used slot"),
+        }
     }
 }
