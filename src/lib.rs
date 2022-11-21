@@ -341,3 +341,13 @@ impl<'a> Iterator for Ids<'a> {
         }
     }
 }
+
+impl<T> IntoIterator for Arena<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
+    }
+}
