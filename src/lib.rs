@@ -74,6 +74,11 @@ impl<T> Arena<T> {
     }
 
     #[inline]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self.values.as_mut_slice()
+    }
+
+    #[inline]
     pub fn get(&self, id: ArenaId) -> Option<&T> {
         match &self.slots.get(id.index)?.state {
             State::Used { version, value } if *version == id.version => Some(&self.values[*value]),
