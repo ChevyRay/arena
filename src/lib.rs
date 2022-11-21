@@ -5,16 +5,29 @@ use std::ops::{Deref, Index, IndexMut};
 fn test() {
     let mut arena = Arena::new();
 
-    let a = arena.insert('A');
-    let b = arena.insert('B');
-    let c = arena.insert('C');
     let d = arena.insert('D');
+    let c = arena.insert('C');
+    let b = arena.insert('B');
     let e = arena.insert('E');
+    let a = arena.insert('A');
 
-    println!("{:?}", [a, b, c, d, e]);
+    println!("{:?}", arena.iter().collect::<Vec<_>>());
 
-    let mut ids: Vec<ArenaId> = arena.ids().collect();
-    println!("{:?}", &ids);
+    println!("{}", arena[a]);
+    println!("{}", arena[b]);
+    println!("{}", arena[c]);
+    println!("{}", arena[d]);
+    println!("{}", arena[e]);
+
+    arena.sort();
+
+    println!("{:?}", arena.iter().collect::<Vec<_>>());
+
+    println!("{}", arena[a]);
+    println!("{}", arena[b]);
+    println!("{}", arena[c]);
+    println!("{}", arena[d]);
+    println!("{}", arena[e]);
 }
 
 #[derive(Debug)]
@@ -187,6 +200,66 @@ impl<T> Arena<T> {
     }
 
     #[inline]
+    pub fn swap(&mut self, i: usize, j: usize) {
+        self.values.swap(i, j);
+        let slot_i = self.slots[i].value_slot;
+        let slot_j = self.slots[j].value_slot;
+        match &mut self.slots[slot_i] {
+            Slot {
+                value_slot,
+                state: State::Used { value, .. },
+            } => {
+                *value_slot = slot_j;
+                *value = j;
+            }
+            _ => panic!("invalid slot"),
+        };
+        match &mut self.slots[slot_j] {
+            Slot {
+                value_slot,
+                state: State::Used { value, .. },
+            } => {
+                *value_slot = slot_i;
+                *value = i;
+            }
+            _ => panic!("invalid slot"),
+        };
+    }
+
+    fn quicksort<F: FnMut(&T, &T) -> Ordering>(
+        &mut self,
+        low: usize,
+        high: usize,
+        compare: &mut F,
+    ) {
+        if low + 1 >= high.wrapping_add(1) {
+            return;
+        }
+        let p = {
+            let (mut i, mut j) = (low, low);
+            while i <= high {
+                if compare(&self.values[i], &self.values[high]) == Ordering::Greater {
+                    i += 1;
+                } else {
+                    self.swap(i, j);
+                    i += 1;
+                    j += 1;
+                }
+            }
+            j - 1
+        };
+        self.quicksort(low, p.wrapping_sub(1), compare);
+        self.quicksort(p + 1, high, compare);
+    }
+
+    #[inline]
+    pub fn sort_by<F: FnMut(&T, &T) -> Ordering>(&mut self, mut compare: F) {
+        if self.len() > 1 {
+            self.quicksort(0, self.len() - 1, &mut compare);
+        }
+    }
+
+    #[inline]
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
         self.values.iter_mut()
     }
@@ -212,6 +285,13 @@ impl<T> Arena<T> {
         Ids {
             iter: self.slots[..self.len()].iter().enumerate(),
         }
+    }
+}
+
+impl<T: Ord> Arena<T> {
+    #[inline]
+    pub fn sort(&mut self) {
+        self.sort_by(|a, b| a.cmp(b));
     }
 }
 
@@ -343,6 +423,7 @@ impl<'a> Iterator for Ids<'a> {
 }
 
 impl<T> Extend<T> for Arena<T> {
+    #[inline]
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for val in iter {
             self.insert(val);
@@ -361,6 +442,7 @@ impl<T> IntoIterator for Arena<T> {
 }
 
 impl<T> FromIterator<T> for Arena<T> {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut arena = Arena::new();
         arena.extend(iter.into_iter());
