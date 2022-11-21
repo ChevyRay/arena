@@ -1,5 +1,24 @@
 use std::cmp::Ordering;
-use std::ops::Deref;
+use std::ops::{Deref, Index, IndexMut};
+
+#[test]
+fn test() {
+    let mut arena = Arena::new();
+
+    let a = arena.insert('A');
+    let b = arena.insert('B');
+    let c = arena.insert('C');
+    let d = arena.insert('D');
+    let e = arena.insert('E');
+
+    println!("{:?}", arena.deref());
+
+    arena.remove(c);
+
+    println!("{:?}", arena.deref());
+
+    println!("{:?}", arena.get(e));
+}
 
 #[derive(Debug)]
 pub struct Arena<T> {
@@ -37,6 +56,29 @@ impl<T> Arena<T> {
     #[inline]
     pub fn free_slot_count(&self) -> usize {
         self.slot_count() - self.len()
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        self.values.as_slice()
+    }
+
+    #[inline]
+    pub fn get(&self, id: ArenaId) -> Option<&T> {
+        match &self.slots.get(id.index)?.state {
+            State::Used { version, value } if *version == id.version => Some(&self.values[*value]),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, id: ArenaId) -> Option<&mut T> {
+        match &self.slots.get(id.index)?.state {
+            State::Used { version, value } if *version == id.version => {
+                Some(&mut self.values[*value])
+            }
+            _ => None,
+        }
     }
 
     #[inline]
@@ -107,7 +149,11 @@ impl<T> Arena<T> {
         };
 
         // the last value has moved into the removed value's slot, so we need to move its value_slot as well
-        self.slots[removed_value].value_slot = self.slots[self.values.len() - 1].value_slot;
+        let last_slot = self.slots[self.values.len() - 1].value_slot;
+        match &mut self.slots[last_slot].state {
+            State::Used { value, .. } => *value = id.index,
+            _ => panic!("invalid value_slot"),
+        }
 
         // pop + swap out the removed value
         Some(self.values.swap_remove(removed_value))
@@ -133,6 +179,29 @@ impl<T> Deref for Arena<T> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         self.values.as_slice()
+    }
+}
+
+impl<T> Default for Arena<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Index<ArenaId> for Arena<T> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, index: ArenaId) -> &Self::Output {
+        self.get(index).unwrap()
+    }
+}
+
+impl<T> IndexMut<ArenaId> for Arena<T> {
+    #[inline]
+    fn index_mut(&mut self, index: ArenaId) -> &mut Self::Output {
+        self.get_mut(index).unwrap()
     }
 }
 
