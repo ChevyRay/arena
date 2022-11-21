@@ -30,7 +30,7 @@ fn test() {
     println!("{}", arena[e]);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Arena<T> {
     values: Vec<T>,
     slots: Vec<Slot>,
@@ -332,17 +332,6 @@ impl<T> Default for Arena<T> {
     #[inline]
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<T: Clone> Clone for Arena<T> {
-    fn clone(&self) -> Self {
-        Self {
-            values: self.values.clone(),
-            slots: self.slots.clone(),
-            first_free: self.first_free.clone(),
-            next_version: self.next_version,
-        }
     }
 }
 
