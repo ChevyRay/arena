@@ -1,12 +1,11 @@
 use std::cmp::Ordering;
-use std::mem::replace;
 use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct Arena<T> {
     values: Vec<T>,
     slots: Vec<Slot>,
-    next_id: u64,
+    next_version: u64,
     first_free: Option<usize>,
 }
 
@@ -15,7 +14,7 @@ impl<T> Arena<T> {
         Self {
             values: Vec::new(),
             slots: Vec::new(),
-            next_id: 0,
+            next_version: 0,
             first_free: None,
         }
     }
@@ -25,7 +24,7 @@ impl<T> Arena<T> {
         Self {
             values: Vec::with_capacity(capacity),
             slots: Vec::with_capacity(capacity),
-            next_id: 0,
+            next_version: 0,
             first_free: None,
         }
     }
@@ -58,7 +57,7 @@ impl<T> Arena<T> {
                         self.first_free = next_free;
                         slot.value_slot = index;
                         slot.state = State::Used {
-                            id: self.next_id,
+                            version: self.next_version,
                             value: self.values.len(),
                         };
                         index
@@ -73,7 +72,7 @@ impl<T> Arena<T> {
                 self.slots.push(Slot {
                     value_slot: index,
                     state: State::Used {
-                        id: self.next_id,
+                        version: self.next_version,
                         value: self.values.len(),
                     },
                 });
@@ -81,12 +80,50 @@ impl<T> Arena<T> {
             }
         };
         let id = ArenaId {
-            id: self.next_id,
+            version: self.next_version,
             index,
         };
-        self.next_id += 1;
+        self.next_version += 1;
         self.values.push(create(id));
         id
+    }
+
+    pub fn remove(&mut self, id: ArenaId) -> Option<T> {
+        let removed_value = {
+            let slot = self.slots.get_mut(id.index)?;
+
+            // get the slot of the removed value
+            let value = match &slot.state {
+                State::Used { version, value } if *version == id.version => *value,
+                _ => return None,
+            };
+
+            // free up the value's slot
+            slot.state = State::Free {
+                next_free: self.first_free.replace(id.index),
+            };
+
+            value
+        };
+
+        // the last value has moved into the removed value's slot, so we need to move its value_slot as well
+        self.slots[removed_value].value_slot = self.slots[self.values.len() - 1].value_slot;
+
+        // pop + swap out the removed value
+        Some(self.values.swap_remove(removed_value))
+    }
+
+    pub fn clear(&mut self) {
+        if self.is_empty() {
+            return;
+        }
+        for i in 0..self.values.len() {
+            let slot = self.slots[i].value_slot;
+            self.slots[slot].state = State::Free {
+                next_free: self.first_free.replace(slot),
+            };
+        }
+        self.values.clear();
     }
 }
 
@@ -107,19 +144,19 @@ struct Slot {
 
 #[derive(Debug, Clone)]
 enum State {
-    Used { id: u64, value: usize },
+    Used { version: u64, value: usize },
     Free { next_free: Option<usize> },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, Hash)]
 pub struct ArenaId {
-    id: u64,
+    version: u64,
     index: usize,
 }
 
 impl PartialOrd for ArenaId {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.id, self.index).partial_cmp(&(other.id, other.index))
+        (self.version, self.index).partial_cmp(&(other.version, other.index))
     }
 }
