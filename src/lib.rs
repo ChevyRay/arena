@@ -84,7 +84,7 @@ fn test() {
 ///
 /// ```
 /// # use arena::Arena;
-/// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+/// let mut arena = Arena::from(['A', 'B', 'C']);
 ///
 /// let mut iter = arena.iter();
 /// assert_eq!(Some(&'A'), iter.next());
@@ -200,7 +200,7 @@ impl<T> Arena<T> {
     ///
     /// ```
     /// # use arena::Arena;
-    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
     ///
     /// assert_eq!(arena.len(), 3);
     /// assert_eq!(arena.slot_count(), 3);
@@ -222,7 +222,7 @@ impl<T> Arena<T> {
     ///
     /// ```
     /// # use arena::Arena;
-    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
     ///
     /// assert_eq!(arena.slot_count(), 3);
     /// assert_eq!(arena.free_slot_count(), 0);
@@ -243,7 +243,7 @@ impl<T> Arena<T> {
     ///
     /// ```
     /// # use arena::Arena;
-    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
     ///
     /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
     ///
@@ -262,7 +262,7 @@ impl<T> Arena<T> {
     ///
     /// ```
     /// # use arena::Arena;
-    /// let mut arena: Arena<i32> = Arena::from_iter([1, 2, 3, 4, 5]);
+    /// let mut arena: Arena<i32> = Arena::from([1, 2, 3, 4, 5]);
     ///
     /// assert_eq!(arena.as_mut_slice(), &[1, 2, 3, 4, 5]);
     ///
