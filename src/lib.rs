@@ -37,21 +37,100 @@ fn test() {
 /// like an index, except that they remain valid even if other items in the arena
 /// are removed or if the arena is sorted.
 ///
-/// Lookups by ID are only slightly slower than indexing into a `Vec<T>`, and like
+/// A big advantage of this collection over something like a [`HashMap`](std::collections::HashMap)
+/// is that, since the values are stored in contiguous memory, you can access this
+/// slice [directly](Arena::as_slice) and get all the benefits that you would from
+/// having an array or a [`Vec`], such as parallel iterators with [`rayon`](https://crates.io/crates/rayon).
+///
+/// # Examples
+///
+/// ```
+/// use arena::Arena;
+///
+/// // create an arena and add 3 values to it
+/// let mut arena = Arena::new();
+/// let a = arena.insert('A');
+/// let b = arena.insert('B');
+/// let c = arena.insert('C');
+///
+/// // we can access the slice of values directly
+/// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+///
+/// // or we can use the returned IDs to access them
+/// assert_eq!(Some(&'A'), arena.get(a));
+/// assert_eq!(Some(&'B'), arena.get(b));
+/// assert_eq!(Some(&'C'), arena.get(c));
+///
+/// // remove a value from the middle
+/// arena.remove(b);
+///
+/// // the slice now only has the remaining values
+/// assert_eq!(arena.as_slice(), &['A', 'C']);
+///
+/// // even though `C` changed position, its ID is still valid
+/// assert_eq!(Some(&'A'), arena.get(a));
+/// assert_eq!(None, arena.get(b));
+/// assert_eq!(Some(&'C'), arena.get(c));
+///
+/// // IDs are copyable so they can be passed around easily
+/// let some_id = c;
+/// assert_eq!(Some(&'C'), arena.get(some_id));
+/// ```
+///
+/// # Iteration
+///
+/// Because arena implements [`Deref<Target = [T]>`](Arena::deref), you can iterate over
+/// the values in the contiguous slice directly:
+///
+/// ```
+/// # use arena::Arena;
+/// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+///
+/// let mut iter = arena.iter();
+/// assert_eq!(Some(&'A'), iter.next());
+/// assert_eq!(Some(&'B'), iter.next());
+/// assert_eq!(Some(&'C'), iter.next());
+/// ```
+///
+/// Alternatively, you can iterate over ID/value pairs:
+///
+/// ```
+/// # use arena::Arena;
+/// let mut arena = Arena::new();
+/// let a = arena.insert('A');
+/// let b = arena.insert('B');
+/// let c = arena.insert('C');
+///
+/// let mut pairs = arena.pairs();
+/// assert_eq!(Some((a, &'A')), pairs.next());
+/// assert_eq!(Some((b, &'B')), pairs.next());
+/// assert_eq!(Some((c, &'C')), pairs.next());
+/// ```
+///
+/// Or iterate over just the IDs:
+///
+/// ```
+/// # use arena::Arena;
+/// # let mut arena = Arena::new();
+/// # let a = arena.insert('A');
+/// # let b = arena.insert('B');
+/// # let c = arena.insert('C');
+/// let mut ids = arena.ids();
+/// assert_eq!(Some(a), ids.next());
+/// assert_eq!(Some(b), ids.next());
+/// assert_eq!(Some(c), ids.next());
+/// ```
+///
+/// # Performance
+///
+/// Lookups by ID are only slightly slower than indexing into a [`Vec`], and like
 /// a vector they do not take longer even when the collection grows. To provide this
 /// ability, though, adding and removing from the arena has more overhead than a vector.
 ///
 /// To keep removal fast, the arena uses a "pop & swap" method to remove values, meaning
 /// the last value will get moved into the removed value's position. The ID of that value
-/// will then get remapped to prevent it from being invalidated. Because of this, the
-/// values in an arena are never guaranteed to be in any order unless you call `sort`.
-///
-/// Another advantage of this collection is that, since the values are in contiguous
-/// memory, you can access this slice directly and get all the benefits that you would
-/// from having a `Vec<T>` directly, such as parallel iterators with `rayon`.
-///
-/// It is also memory efficient, and keeps only one other vector alongside the values
-/// vector in order to re-map IDs and keep them valid.
+/// will then get remapped to prevent it from being invalidated. Because of this, you
+/// should never assume the values or IDs in an arena remain in the order you added them.
 #[derive(Debug, Clone)]
 pub struct Arena<T> {
     values: Vec<T>,
@@ -62,6 +141,14 @@ pub struct Arena<T> {
 
 impl<T> Arena<T> {
     /// Constructs a new, empty `Arena<T>`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #![allow(unused_mut)]
+    /// # use arena::Arena;
+    /// let mut arena: Arena<String> = Arena::new();
+    /// ```
     pub const fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -72,6 +159,14 @@ impl<T> Arena<T> {
     }
 
     /// Constructs a new, empty `Arena<T>` with at least the specified capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #![allow(unused_mut)]
+    /// # use arena::Arena;
+    /// let mut arena: Arena<String> = Arena::with_capacity(1000);
+    /// ```
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -83,12 +178,38 @@ impl<T> Arena<T> {
     }
 
     /// Returns `true` if the arena contains no elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// assert!(arena.is_empty());
+    ///
+    /// arena.insert('A');
+    /// assert!(!arena.is_empty());
+    /// ```
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 
     /// Returns the amount of slots the arena is using to map IDs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.len(), 3);
+    /// assert_eq!(arena.slot_count(), 3);
+    ///
+    /// arena.clear();
+    ///
+    /// assert_eq!(arena.len(), 0);
+    /// assert_eq!(arena.slot_count(), 3);
+    /// ```
     #[inline]
     pub fn slot_count(&self) -> usize {
         self.slots.len()
@@ -96,12 +217,40 @@ impl<T> Arena<T> {
 
     /// Returns the amount of empty slots the arena has. New values added to
     /// the arena will make use of these slots instead of creating new ones.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.slot_count(), 3);
+    /// assert_eq!(arena.free_slot_count(), 0);
+    ///
+    /// let _ = arena.pop();
+    ///
+    /// assert_eq!(arena.slot_count(), 3);
+    /// assert_eq!(arena.free_slot_count(), 1);
+    /// ```
     #[inline]
     pub fn free_slot_count(&self) -> usize {
         self.slot_count() - self.len()
     }
 
     /// Extracts a slice containing all the arena's values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from_iter(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+    ///
+    /// let _ = arena.pop();
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B']);
+    /// ```
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         self.values.as_slice()
@@ -109,7 +258,23 @@ impl<T> Arena<T> {
 
     /// Extracts a mutable slice containing all the arena's values.
     ///
-    /// # NOTE
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena: Arena<i32> = Arena::from_iter([1, 2, 3, 4, 5]);
+    ///
+    /// assert_eq!(arena.as_mut_slice(), &[1, 2, 3, 4, 5]);
+    ///
+    /// for num in arena.as_mut_slice() {
+    ///     *num += 1;
+    /// }
+    ///
+    /// assert_eq!(arena.as_mut_slice(), &[2, 3, 4, 5, 6]);
+    ///
+    /// ```
+    ///
+    /// # Warning
     ///
     /// Re-arranging the values in this mutable slice will invalidate the IDs given
     /// when they were added to the arena. It is recommended only to use this slice
@@ -276,18 +441,34 @@ impl<T> Arena<T> {
         Some(value)
     }
 
-    /// Clears all values from the arena.
-    pub fn clear(&mut self) {
+    fn clear_opt(&mut self, clear_slots: bool) {
         if self.is_empty() {
             return;
         }
-        for i in 0..self.values.len() {
-            let slot = self.slots[i].value_slot;
-            self.slots[slot].state = State::Free {
-                next_free: self.first_free.replace(slot),
-            };
+
+        if clear_slots {
+            self.slots.clear();
+            self.first_free = None;
+        } else {
+            for i in 0..self.values.len() {
+                let slot = self.slots[i].value_slot;
+                self.slots[slot].state = State::Free {
+                    next_free: self.first_free.replace(slot),
+                };
+            }
         }
+
         self.values.clear();
+    }
+
+    /// Clears all values from the arena.
+    pub fn clear(&mut self) {
+        self.clear_opt(false);
+    }
+
+    /// Clears all values and slots from the arena.
+    pub fn clear_all(&mut self) {
+        self.clear_opt(true);
     }
 
     /// Swaps the position of the two values corresponding to the provided IDs without
