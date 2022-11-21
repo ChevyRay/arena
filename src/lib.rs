@@ -360,6 +360,82 @@ impl<T> IndexMut<ArenaId> for Arena<T> {
     }
 }
 
+impl<T> Extend<T> for Arena<T> {
+    #[inline]
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for val in iter {
+            self.insert(val);
+        }
+    }
+}
+
+impl<'a, T: Clone + 'a> Extend<&'a T> for Arena<T> {
+    #[inline]
+    fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().cloned())
+    }
+}
+
+impl<T> From<Vec<T>> for Arena<T> {
+    fn from(values: Vec<T>) -> Self {
+        let mut slots = Vec::new();
+        let mut version = 0;
+        for i in 0..values.len() {
+            slots.push(Slot {
+                value_slot: i,
+                state: State::Used { version, value: i },
+            });
+            version += 1;
+        }
+        Self {
+            values,
+            slots,
+            first_free: None,
+            next_version: version,
+        }
+    }
+}
+
+impl<'a, T: Clone + 'a> From<&'a [T]> for Arena<T> {
+    #[inline]
+    fn from(values: &'a [T]) -> Self {
+        Self::from_iter(values.iter().cloned())
+    }
+}
+
+impl<'a, T: Clone + 'a> From<&'a mut [T]> for Arena<T> {
+    #[inline]
+    fn from(values: &'a mut [T]) -> Self {
+        Self::from_iter(values.iter().cloned())
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for Arena<T> {
+    #[inline]
+    fn from(values: [T; N]) -> Self {
+        Self::from(Vec::from(values))
+    }
+}
+
+impl<T> IntoIterator for Arena<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
+    }
+}
+
+impl<T> FromIterator<T> for Arena<T> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut arena = Arena::new();
+        arena.extend(iter.into_iter());
+        arena
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Slot {
     value_slot: usize,
@@ -452,33 +528,5 @@ impl<'a> Iterator for Ids<'a> {
             }),
             _ => None,
         }
-    }
-}
-
-impl<T> Extend<T> for Arena<T> {
-    #[inline]
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        for val in iter {
-            self.insert(val);
-        }
-    }
-}
-
-impl<T> IntoIterator for Arena<T> {
-    type Item = T;
-    type IntoIter = std::vec::IntoIter<T>;
-
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.values.into_iter()
-    }
-}
-
-impl<T> FromIterator<T> for Arena<T> {
-    #[inline]
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut arena = Arena::new();
-        arena.extend(iter.into_iter());
-        arena
     }
 }
