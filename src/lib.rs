@@ -87,9 +87,10 @@ fn test() {
 /// let mut arena = Arena::from(['A', 'B', 'C']);
 ///
 /// let mut iter = arena.iter();
-/// assert_eq!(Some(&'A'), iter.next());
-/// assert_eq!(Some(&'B'), iter.next());
-/// assert_eq!(Some(&'C'), iter.next());
+/// assert_eq!(iter.next(), Some(&'A'));
+/// assert_eq!(iter.next(), Some(&'B'));
+/// assert_eq!(iter.next(), Some(&'C'));
+/// assert_eq!(iter.next(), None);
 /// ```
 ///
 /// Alternatively, you can iterate over ID/value pairs:
@@ -102,9 +103,10 @@ fn test() {
 /// let c = arena.insert('C');
 ///
 /// let mut pairs = arena.pairs();
-/// assert_eq!(Some((a, &'A')), pairs.next());
-/// assert_eq!(Some((b, &'B')), pairs.next());
-/// assert_eq!(Some((c, &'C')), pairs.next());
+/// assert_eq!(pairs.next(), Some((a, &'A')));
+/// assert_eq!(pairs.next(), Some((b, &'B')));
+/// assert_eq!(pairs.next(), Some((c, &'C')));
+/// assert_eq!(pairs.next(), None);
 /// ```
 ///
 /// Or iterate over just the IDs:
@@ -116,9 +118,10 @@ fn test() {
 /// # let b = arena.insert('B');
 /// # let c = arena.insert('C');
 /// let mut ids = arena.ids();
-/// assert_eq!(Some(a), ids.next());
-/// assert_eq!(Some(b), ids.next());
-/// assert_eq!(Some(c), ids.next());
+/// assert_eq!(ids.next(), Some(a));
+/// assert_eq!(ids.next(), Some(b));
+/// assert_eq!(ids.next(), Some(c));
+/// assert_eq!(ids.next(), None);
 /// ```
 ///
 /// # Performance
@@ -555,6 +558,8 @@ impl<T> Arena<T> {
     /// Removes the value from the arena assigned to the ID. If the value existed
     /// in the arena, it will be returned.
     ///
+    /// # Examples
+    ///
     /// ```
     /// # use arena::Arena;
     /// let mut arena = Arena::new();
@@ -582,9 +587,9 @@ impl<T> Arena<T> {
             value
         };
 
-        if self.len() > 1 {
+        let from_slot = self.values.len() - 1;
+        if from_slot != to_slot {
             // the value that was at the back is now in the removed spot
-            let from_slot = self.values.len() - 1;
             self.slots[to_slot].value_slot = self.slots[from_slot].value_slot;
             match &mut self.slots[from_slot].state {
                 State::Used { value, .. } => *value = to_slot,
@@ -598,12 +603,38 @@ impl<T> Arena<T> {
         }
     }
 
-    /// Removes the value at the specified index.
+    /// Removes the value at the specified index and returns it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.remove_at(5), None);
+    /// assert_eq!(arena.remove_at(1), Some('B'));
+    /// assert_eq!(arena.remove_at(1), Some('C'));
+    /// assert_eq!(arena.remove_at(1), None);
+    /// assert_eq!(arena.remove_at(0), Some('A'));
+    /// assert_eq!(arena.remove_at(0), None);
+    /// ```
     pub fn remove_at(&mut self, index: usize) -> Option<T> {
         self.remove(self.id_at(index)?)
     }
 
     /// Pops a value off the end of the arena and returns it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.pop(), Some('C'));
+    /// assert_eq!(arena.pop(), Some('B'));
+    /// assert_eq!(arena.pop(), Some('A'));
+    /// assert_eq!(arena.pop(), None);
+    /// ```
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
         let value = self.values.pop()?;
@@ -615,10 +646,6 @@ impl<T> Arena<T> {
     }
 
     fn clear_opt(&mut self, clear_slots: bool) {
-        if self.is_empty() {
-            return;
-        }
-
         if clear_slots {
             self.slots.clear();
             self.first_free = None;
@@ -634,18 +661,68 @@ impl<T> Arena<T> {
         self.values.clear();
     }
 
-    /// Clears all values from the arena.
+    /// Clears all values from the arena. This will free up all the slots,
+    /// which will be reused for any values added after this call.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.len(), 3);
+    /// assert_eq!(arena.slot_count(), 3);
+    ///
+    /// arena.clear();
+    ///
+    /// assert_eq!(arena.len(), 0);
+    /// assert_eq!(arena.slot_count(), 3);
+    /// ```
     pub fn clear(&mut self) {
         self.clear_opt(false);
     }
 
     /// Clears all values and slots from the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
+    ///
+    /// assert_eq!(arena.len(), 3);
+    /// assert_eq!(arena.slot_count(), 3);
+    ///
+    /// arena.clear_all();
+    ///
+    /// assert_eq!(arena.len(), 0);
+    /// assert_eq!(arena.slot_count(), 0);
+    /// ```
     pub fn clear_all(&mut self) {
         self.clear_opt(true);
     }
 
     /// Swaps the position of the two values corresponding to the provided IDs without
     /// invalidating them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    ///
+    /// arena.swap_positions(a, b);
+    ///
+    /// assert_eq!(arena.as_slice(), &['B', 'A']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// ```
     #[inline]
     pub fn swap_positions(&mut self, i: ArenaId, j: ArenaId) -> bool {
         if let Some(i) = self.index_of(i) {
@@ -658,8 +735,34 @@ impl<T> Arena<T> {
     }
 
     /// Swaps values from the two positions in the arena without invalidating their IDS.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    ///
+    /// arena.swap(0, 1);
+    ///
+    /// assert_eq!(arena.as_slice(), &['B', 'A']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// ```
     #[inline]
     pub fn swap(&mut self, i: usize, j: usize) {
+        assert!(i < self.len());
+        assert!(j < self.len());
+
+        if i == j {
+            return;
+        }
+
         self.values.swap(i, j);
         let slot_i = self.slots[i].value_slot;
         let slot_j = self.slots[j].value_slot;
@@ -713,6 +816,28 @@ impl<T> Arena<T> {
 
     /// Sorts the values in the arena, using the provided function, without
     /// invalidating their IDs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let c = arena.insert('C');
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['C', 'A', 'B']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// assert_eq!(arena[c], 'C');
+    ///
+    /// arena.sort_by(|a, b| a.cmp(b));
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// assert_eq!(arena[c], 'C');
+    /// ```
     #[inline]
     pub fn sort_by<F: FnMut(&T, &T) -> Ordering>(&mut self, mut compare: F) {
         if self.len() > 1 {
@@ -723,12 +848,41 @@ impl<T> Arena<T> {
     /// Returns an iterator that allows modifying each value.
     ///
     /// The iterator yields all items from start to end.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from([1, 2, 3]);
+    ///
+    /// for val in arena.iter_mut() {
+    ///     *val *= 10;
+    /// }
+    ///
+    /// assert_eq!(arena.as_slice(), &[10, 20, 30]);
+    /// ```
     #[inline]
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
         self.values.iter_mut()
     }
 
     /// Returns an iterator over all ID/value pairs in the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// let mut pairs = arena.pairs();
+    /// assert_eq!(pairs.next(), Some((a, &'A')));
+    /// assert_eq!(pairs.next(), Some((b, &'B')));
+    /// assert_eq!(pairs.next(), Some((c, &'C')));
+    /// assert_eq!(pairs.next(), None);
+    /// ```
     #[inline]
     pub fn pairs(&self) -> Pairs<'_, T> {
         Pairs {
@@ -738,6 +892,30 @@ impl<T> Arena<T> {
     }
 
     /// Returns a mutable iterator over all ID/value pairs in the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+    ///
+    /// for (id, val) in arena.pairs_mut() {
+    ///     if id == a {
+    ///         assert_eq!(*val, 'A');
+    ///     } else if id == b {
+    ///         assert_eq!(*val, 'B');
+    ///     } else if id == c {
+    ///         assert_eq!(*val, 'C');
+    ///     } else {
+    ///         unreachable!()
+    ///     }
+    /// }
+    /// ```
     #[inline]
     pub fn pairs_mut(&mut self) -> PairsMut<'_, T> {
         PairsMut {
@@ -747,6 +925,22 @@ impl<T> Arena<T> {
     }
 
     /// Returns an iterator over all IDs in the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// let mut ids = arena.ids();
+    /// assert_eq!(ids.next(), Some(a));
+    /// assert_eq!(ids.next(), Some(b));
+    /// assert_eq!(ids.next(), Some(c));
+    /// assert_eq!(ids.next(), None);
+    /// ```
     #[inline]
     pub fn ids(&self) -> Ids<'_> {
         Ids {
@@ -766,6 +960,27 @@ impl<T: Clone> Arena<T> {
 
 impl<T: Ord> Arena<T> {
     /// Sorts the values in the arena, without invalidating their IDs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let c = arena.insert('C');
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['C', 'A', 'B']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// assert_eq!(arena[c], 'C');
+    ///
+    /// arena.sort();
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+    /// assert_eq!(arena[a], 'A');
+    /// assert_eq!(arena[b], 'B');
+    /// assert_eq!(arena[c], 'C');
     #[inline]
     pub fn sort(&mut self) {
         self.sort_by(|a, b| a.cmp(b));
@@ -897,6 +1112,8 @@ enum State {
 /// Unlike an index, this ID will remain a valid handle to the value even
 /// if other values are removed from the arena and the value vector gets
 /// re-ordered.
+///
+/// They implement `Copy` and so can be passed around freely.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ArenaId {
     version: u64,
