@@ -429,23 +429,49 @@ impl<T> Arena<T> {
     ///
     /// ```
     /// # use arena::Arena;
-    /// let mut arena = Arena::from(['A', 'B', 'C', 'D']);
-    /// let e = arena.insert('E');
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    /// let d = arena.insert('D');
     ///
-    /// arena.remove_at(3);
+    /// assert_eq!(arena.as_slice(), &['A', 'B', 'C', 'D']);
+    /// assert_eq!(arena.index_of(a), Some(0));
+    /// assert_eq!(arena.index_of(b), Some(1));
+    /// assert_eq!(arena.index_of(c), Some(2));
+    /// assert_eq!(arena.index_of(d), Some(3));
     ///
+    /// // remove `B` from the arena
+    /// arena.remove_at(1);
+    ///
+    /// // now `D` has moved into the hole created by `B`
+    /// assert_eq!(arena.as_slice(), &['A', 'D', 'C']);
+    /// assert_eq!(arena.index_of(d), Some(1));
     ///
     /// ```
     #[inline]
     pub fn index_of(&self, id: ArenaId) -> Option<usize> {
         match &self.slots.get(id.index)?.state {
-            State::Used { version, .. } if *version == id.version => Some(id.index),
+            State::Used { version, value } if *version == id.version => Some(*value),
             _ => None,
         }
     }
 
     /// Inserts a value in the arena, returning an ID that can be used to
     /// access the value at a later time, even if the values were re-arranged.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_ne!(a, b);
+    /// assert_eq!(arena.get(a), Some(&'A'));
+    /// assert_eq!(arena.get(b), Some(&'B'));
+    /// ```
     #[inline]
     pub fn insert(&mut self, value: T) -> ArenaId {
         self.insert_with(|_| value)
@@ -454,6 +480,34 @@ impl<T> Arena<T> {
     /// Inserts a value, created by the provided function, to the arena. The
     /// function is passed the ID assigned to the value, which is useful if
     /// the values themselves want to store the IDs on construction.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::{Arena, ArenaId};
+    /// struct Person {
+    ///     id: ArenaId,
+    ///     name: &'static str,
+    /// }
+    ///
+    /// let mut arena = Arena::new();
+    ///
+    /// let foo = arena.insert_with(|id| Person {
+    ///     id,
+    ///     name: "Foo",
+    /// });
+    ///
+    /// let bar = arena.insert_with(|id| Person {
+    ///     id,
+    ///     name: "Bar",
+    /// });
+    ///
+    /// assert_eq!(arena[foo].id, foo);
+    /// assert_eq!(arena[foo].name, "Foo");
+    ///
+    /// assert_eq!(arena[bar].id, bar);
+    /// assert_eq!(arena[bar].name, "Bar");
+    /// ```
     pub fn insert_with<F>(&mut self, create: F) -> ArenaId
     where
         F: FnOnce(ArenaId) -> T,
@@ -500,6 +554,16 @@ impl<T> Arena<T> {
 
     /// Removes the value from the arena assigned to the ID. If the value existed
     /// in the arena, it will be returned.
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let foo = arena.insert("foo");
+    ///
+    /// assert_eq!(arena.remove(foo), Some("foo"));
+    /// assert_eq!(arena.remove(foo), None);
+    ///
+    /// ```
     pub fn remove(&mut self, id: ArenaId) -> Option<T> {
         let to_slot = {
             let slot = self.slots.get_mut(id.index)?;
@@ -518,16 +582,20 @@ impl<T> Arena<T> {
             value
         };
 
-        // the value that was at the back is now in the removed spot
-        let from_slot = self.values.len() - 1;
-        self.slots[to_slot].value_slot = self.slots[from_slot].value_slot;
-        match &mut self.slots[from_slot].state {
-            State::Used { value, .. } => *value = to_slot,
-            _ => unreachable!(),
-        }
+        if self.len() > 1 {
+            // the value that was at the back is now in the removed spot
+            let from_slot = self.values.len() - 1;
+            self.slots[to_slot].value_slot = self.slots[from_slot].value_slot;
+            match &mut self.slots[from_slot].state {
+                State::Used { value, .. } => *value = to_slot,
+                _ => unreachable!(),
+            }
 
-        // pop + swap out the removed value
-        Some(self.values.swap_remove(to_slot))
+            // pop + swap out the removed value
+            Some(self.values.swap_remove(to_slot))
+        } else {
+            self.values.pop()
+        }
     }
 
     /// Removes the value at the specified index.
