@@ -342,6 +342,14 @@ impl<'a> Iterator for Ids<'a> {
     }
 }
 
+impl<T> Extend<T> for Arena<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for val in iter {
+            self.insert(val);
+        }
+    }
+}
+
 impl<T> IntoIterator for Arena<T> {
     type Item = T;
     type IntoIter = std::vec::IntoIter<T>;
@@ -349,5 +357,13 @@ impl<T> IntoIterator for Arena<T> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.values.into_iter()
+    }
+}
+
+impl<T> FromIterator<T> for Arena<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut arena = Arena::new();
+        arena.extend(iter.into_iter());
+        arena
     }
 }
