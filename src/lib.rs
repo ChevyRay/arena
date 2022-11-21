@@ -11,13 +11,10 @@ fn test() {
     let d = arena.insert('D');
     let e = arena.insert('E');
 
-    println!("{:?}", arena.as_slice());
+    println!("{:?}", [a, b, c, d, e]);
 
-    for (id, chr) in arena.pairs_mut() {
-        *chr = char::from_u32(*chr as u32 + 1).unwrap();
-    }
-
-    println!("{:?}", arena.as_slice());
+    let mut ids: Vec<ArenaId> = arena.ids().collect();
+    println!("{:?}", &ids);
 }
 
 #[derive(Debug)]
@@ -77,6 +74,23 @@ impl<T> Arena<T> {
             State::Used { version, value } if *version == id.version => {
                 Some(&mut self.values[*value])
             }
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn contains(&self, id: ArenaId) -> bool {
+        self.get(id).is_some()
+    }
+
+    #[inline]
+    pub fn id_at(&self, index: usize) -> Option<ArenaId> {
+        let slot = self.slots.get(index)?.value_slot;
+        match &self.slots[slot].state {
+            State::Used { version, .. } => Some(ArenaId {
+                version: *version,
+                index,
+            }),
             _ => None,
         }
     }
@@ -192,6 +206,13 @@ impl<T> Arena<T> {
             slots: &self.slots,
         }
     }
+
+    #[inline]
+    pub fn ids(&self) -> Ids<'_> {
+        Ids {
+            iter: self.slots[..self.len()].iter().enumerate(),
+        }
+    }
 }
 
 impl<T> Deref for Arena<T> {
@@ -297,6 +318,26 @@ impl<'a, T> Iterator for PairsMut<'a, T> {
                 val,
             )),
             _ => panic!("expected used slot"),
+        }
+    }
+}
+
+pub struct Ids<'a> {
+    iter: std::iter::Enumerate<std::slice::Iter<'a, Slot>>,
+}
+
+impl<'a> Iterator for Ids<'a> {
+    type Item = ArenaId;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let (index, slot) = self.iter.next()?;
+        match &slot.state {
+            State::Used { version, .. } => Some(ArenaId {
+                version: *version,
+                index,
+            }),
+            _ => None,
         }
     }
 }
