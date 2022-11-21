@@ -543,7 +543,7 @@ enum State {
 /// Unlike an index, this ID will remain a valid handle to the value even
 /// if other values are removed from the arena and the value vector gets
 /// re-ordered.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ArenaId {
     version: u64,
     index: usize,
@@ -552,7 +552,14 @@ pub struct ArenaId {
 impl PartialOrd for ArenaId {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.version, self.index).partial_cmp(&(other.version, other.index))
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ArenaId {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.version, self.index).cmp(&(other.version, other.index))
     }
 }
 
