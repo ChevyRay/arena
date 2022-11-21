@@ -328,19 +328,30 @@ impl<T: Ord> Arena<T> {
     }
 }
 
+impl<T> Default for Arena<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Clone> Clone for Arena<T> {
+    fn clone(&self) -> Self {
+        Self {
+            values: self.values.clone(),
+            slots: self.slots.clone(),
+            first_free: self.first_free.clone(),
+            next_version: self.next_version,
+        }
+    }
+}
+
 impl<T> Deref for Arena<T> {
     type Target = [T];
 
     #[inline]
     fn deref(&self) -> &Self::Target {
         self.values.as_slice()
-    }
-}
-
-impl<T> Default for Arena<T> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -360,7 +371,7 @@ impl<T> IndexMut<ArenaId> for Arena<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Slot {
     value_slot: usize,
     state: State,
