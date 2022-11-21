@@ -322,7 +322,7 @@ impl<T> Arena<T> {
     /// ```
     #[inline]
     pub fn get(&self, id: ArenaId) -> Option<&T> {
-        match &self.slots.get(id.index)?.state {
+        match &self.slots.get(id.idx)?.state {
             State::Used { uid, value } if *uid == id.uid => Some(&self.values[*value]),
             _ => None,
         }
@@ -353,7 +353,7 @@ impl<T> Arena<T> {
     /// ```
     #[inline]
     pub fn get_mut(&mut self, id: ArenaId) -> Option<&mut T> {
-        match &self.slots.get(id.index)?.state {
+        match &self.slots.get(id.idx)?.state {
             State::Used { uid, value } if *uid == id.uid => Some(&mut self.values[*value]),
             _ => None,
         }
@@ -417,12 +417,9 @@ impl<T> Arena<T> {
         if index >= self.len() {
             return None;
         }
-        let slot = self.slots.get(index)?.value_slot;
-        match &self.slots[slot].state {
-            State::Used { uid, value } if *value == index => Some(ArenaId {
-                uid: *uid,
-                index: slot,
-            }),
+        let idx = self.slots.get(index)?.value_slot;
+        match &self.slots[idx].state {
+            State::Used { uid, value } if *value == index => Some(ArenaId { uid: *uid, idx }),
             _ => None,
         }
     }
@@ -455,7 +452,7 @@ impl<T> Arena<T> {
     /// ```
     #[inline]
     pub fn index_of(&self, id: ArenaId) -> Option<usize> {
-        match &self.slots.get(id.index)?.state {
+        match &self.slots.get(id.idx)?.state {
             State::Used { uid, value } if *uid == id.uid => Some(*value),
             _ => None,
         }
@@ -516,7 +513,7 @@ impl<T> Arena<T> {
     where
         F: FnOnce(ArenaId) -> T,
     {
-        let index = match self.first_free.take() {
+        let idx = match self.first_free.take() {
             // if there is a free slot available, assign the value to it
             Some(index) => {
                 let slot = &mut self.slots[index];
@@ -549,7 +546,7 @@ impl<T> Arena<T> {
         };
         let id = ArenaId {
             uid: self.next_uid,
-            index,
+            idx,
         };
         self.next_uid += 1;
         self.values.push(create(id));
@@ -572,7 +569,7 @@ impl<T> Arena<T> {
     /// ```
     pub fn remove(&mut self, id: ArenaId) -> Option<T> {
         let to_slot = {
-            let slot = self.slots.get_mut(id.index)?;
+            let slot = self.slots.get_mut(id.idx)?;
 
             // get the slot of the removed value
             let value = match &slot.state {
@@ -582,7 +579,7 @@ impl<T> Arena<T> {
 
             // free up the value's slot
             slot.state = State::Free {
-                next_free: self.first_free.replace(id.index),
+                next_free: self.first_free.replace(id.idx),
             };
 
             value
@@ -1118,7 +1115,7 @@ enum State {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ArenaId {
     uid: u64,
-    index: usize,
+    idx: usize,
 }
 
 impl PartialOrd for ArenaId {
@@ -1131,7 +1128,7 @@ impl PartialOrd for ArenaId {
 impl Ord for ArenaId {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.uid, self.index).cmp(&(other.uid, other.index))
+        (self.uid, self.idx).cmp(&(other.uid, other.idx))
     }
 }
 
@@ -1148,10 +1145,10 @@ impl<'a, T> Iterator for Pairs<'a, T> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let (index, val) = self.iter.next()?;
-        let index = self.slots[index].value_slot;
-        match &self.slots[index].state {
-            State::Used { uid, .. } => Some((ArenaId { uid: *uid, index }, val)),
+        let (idx, val) = self.iter.next()?;
+        let idx = self.slots[idx].value_slot;
+        match &self.slots[idx].state {
+            State::Used { uid, .. } => Some((ArenaId { uid: *uid, idx }, val)),
             _ => panic!("expected used slot"),
         }
     }
@@ -1170,10 +1167,10 @@ impl<'a, T> Iterator for PairsMut<'a, T> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let (index, val) = self.iter.next()?;
-        let index = self.slots[index].value_slot;
-        match &self.slots[index].state {
-            State::Used { uid, .. } => Some((ArenaId { uid: *uid, index }, val)),
+        let (idx, val) = self.iter.next()?;
+        let idx = self.slots[idx].value_slot;
+        match &self.slots[idx].state {
+            State::Used { uid, .. } => Some((ArenaId { uid: *uid, idx }, val)),
             _ => panic!("expected used slot"),
         }
     }
@@ -1191,9 +1188,9 @@ impl<'a> Iterator for Ids<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let (index, slot) = self.iter.next()?;
+        let (idx, slot) = self.iter.next()?;
         match &slot.state {
-            State::Used { uid, .. } => Some(ArenaId { uid: *uid, index }),
+            State::Used { uid, .. } => Some(ArenaId { uid: *uid, idx }),
             _ => None,
         }
     }
