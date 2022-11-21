@@ -172,6 +172,12 @@ impl<T> Arena<T> {
         self.values.clear();
     }
 
+    #[inline]
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.values.iter_mut()
+    }
+
+    #[inline]
     pub fn pairs(&self) -> Pairs<'_, T> {
         Pairs {
             iter: self.values.iter().enumerate(),
@@ -179,6 +185,7 @@ impl<T> Arena<T> {
         }
     }
 
+    #[inline]
     pub fn pairs_mut(&mut self) -> PairsMut<'_, T> {
         PairsMut {
             iter: self.values.iter_mut().enumerate(),
