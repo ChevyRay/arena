@@ -57,9 +57,9 @@ fn test() {
 /// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
 ///
 /// // or we can use the returned IDs to access them
-/// assert_eq!(Some(&'A'), arena.get(a));
-/// assert_eq!(Some(&'B'), arena.get(b));
-/// assert_eq!(Some(&'C'), arena.get(c));
+/// assert_eq!(arena.get(a), Some(&'A'));
+/// assert_eq!(arena.get(b), Some(&'B'));
+/// assert_eq!(arena.get(c), Some(&'C'));
 ///
 /// // remove a value from the middle
 /// arena.remove(b);
@@ -68,13 +68,13 @@ fn test() {
 /// assert_eq!(arena.as_slice(), &['A', 'C']);
 ///
 /// // even though `C` changed position, its ID is still valid
-/// assert_eq!(Some(&'A'), arena.get(a));
-/// assert_eq!(None, arena.get(b));
-/// assert_eq!(Some(&'C'), arena.get(c));
+/// assert_eq!(arena.get(a), Some(&'A'));
+/// assert_eq!(arena.get(b), None);
+/// assert_eq!(arena.get(c), Some(&'C'));
 ///
 /// // IDs are copyable so they can be passed around easily
 /// let some_id = c;
-/// assert_eq!(Some(&'C'), arena.get(some_id));
+/// assert_eq!(arena.get(some_id), Some(&'C'));
 /// ```
 ///
 /// # Iteration
@@ -153,7 +153,7 @@ impl<T> Arena<T> {
         Self {
             values: Vec::new(),
             slots: Vec::new(),
-            next_version: 0,
+            next_version: 1,
             first_free: None,
         }
     }
@@ -172,7 +172,7 @@ impl<T> Arena<T> {
         Self {
             values: Vec::with_capacity(capacity),
             slots: Vec::with_capacity(capacity),
-            next_version: 0,
+            next_version: 1,
             first_free: None,
         }
     }
@@ -292,7 +292,28 @@ impl<T> Arena<T> {
         self.values.as_mut_ptr()
     }
 
-    /// Returns a reference to the value assigned with the ID.
+    /// Returns a reference to the value assigned with the ID, or `None` if the
+    /// value was removed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// assert_eq!(arena.get(a), Some(&'A'));
+    /// assert_eq!(arena.get(b), Some(&'B'));
+    /// assert_eq!(arena.get(c), Some(&'C'));
+    ///
+    /// arena.remove(b);
+    ///
+    /// assert_eq!(arena.get(a), Some(&'A'));
+    /// assert_eq!(arena.get(b), None);
+    /// assert_eq!(arena.get(c), Some(&'C'));
+    /// ```
     #[inline]
     pub fn get(&self, id: ArenaId) -> Option<&T> {
         match &self.slots.get(id.index)?.state {
@@ -301,7 +322,29 @@ impl<T> Arena<T> {
         }
     }
 
-    /// Returns a mutable reference to the value assigned with the ID.
+    /// Returns a mutable reference to the value assigned with the ID, or `None`
+    /// if the value was removed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B']);
+    ///
+    /// if let Some(a_val) = arena.get_mut(a) {
+    ///     *a_val = 'B';
+    /// }
+    ///
+    /// if let Some(b_val) = arena.get_mut(b) {
+    ///     *b_val = 'A';
+    /// }
+    ///
+    /// assert_eq!(arena.as_slice(), &['B', 'A']);
+    /// ```
     #[inline]
     pub fn get_mut(&mut self, id: ArenaId) -> Option<&mut T> {
         match &self.slots.get(id.index)?.state {
@@ -313,19 +356,68 @@ impl<T> Arena<T> {
     }
 
     /// Returns true if the arena contains a value assigned with the ID.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// assert!(arena.contains(a));
+    /// assert!(arena.contains(b));
+    /// assert!(arena.contains(c));
+    ///
+    /// arena.remove(a);
+    ///
+    /// assert!(!arena.contains(a));
+    /// assert!(arena.contains(b));
+    /// assert!(arena.contains(c));
+    /// ```
     #[inline]
     pub fn contains(&self, id: ArenaId) -> bool {
         self.get(id).is_some()
     }
 
-    /// Returns the ID assigned to the value at the corresponding index.
+    /// Returns the ID assigned to the value at the corresponding index, or
+    /// `None` if the index is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    /// let c = arena.insert('C');
+    ///
+    /// assert_eq!(arena.id_at(0), Some(a));
+    /// assert_eq!(arena.id_at(1), Some(b));
+    /// assert_eq!(arena.id_at(2), Some(c));
+    ///
+    /// println!("{:#?}", arena);
+    ///
+    /// arena.remove(b);
+    ///
+    /// println!("{:#?}", arena);
+    ///
+    /// assert_eq!(arena.id_at(0), Some(a));
+    /// assert_eq!(arena.id_at(1), Some(c));
+    /// assert_eq!(arena.id_at(2), None);
+    ///
+    /// ```
     #[inline]
     pub fn id_at(&self, index: usize) -> Option<ArenaId> {
+        if index <= self.len() {
+            return None;
+        }
         let slot = self.slots.get(index)?.value_slot;
         match &self.slots[slot].state {
-            State::Used { version, .. } => Some(ArenaId {
+            State::Used { version, value } if *value == index => Some(ArenaId {
                 version: *version,
-                index,
+                index: slot,
             }),
             _ => None,
         }
@@ -397,7 +489,7 @@ impl<T> Arena<T> {
     /// Removes the value from the arena assigned to the ID. If the value existed
     /// in the arena, it will be returned.
     pub fn remove(&mut self, id: ArenaId) -> Option<T> {
-        let removed_value = {
+        let to_slot = {
             let slot = self.slots.get_mut(id.index)?;
 
             // get the slot of the removed value
@@ -414,15 +506,16 @@ impl<T> Arena<T> {
             value
         };
 
-        // the last value has moved into the removed value's slot, so we need to move its value_slot as well
-        let last_slot = self.slots[self.values.len() - 1].value_slot;
-        match &mut self.slots[last_slot].state {
-            State::Used { value, .. } => *value = id.index,
-            _ => panic!("invalid value_slot"),
+        // the value that was at the back is now in the removed spot
+        let from_slot = self.values.len() - 1;
+        self.slots[to_slot].value_slot = self.slots[from_slot].value_slot;
+        match &mut self.slots[from_slot].state {
+            State::Used { value, .. } => *value = to_slot,
+            _ => unreachable!(),
         }
 
         // pop + swap out the removed value
-        Some(self.values.swap_remove(removed_value))
+        Some(self.values.swap_remove(to_slot))
     }
 
     /// Removes the value at the specified index.
