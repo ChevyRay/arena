@@ -1,3 +1,108 @@
+//! A contiguous growable container which assigns and returns IDs to values when
+//! they are added to it.
+//!
+//! These IDs can then be used to access their corresponding values at any time,
+//! like an index, except that they remain valid even if other items in the arena
+//! are removed or if the arena is sorted.
+//!
+//! A big advantage of this collection over something like a [`HashMap`](std::collections::HashMap)
+//! is that, since the values are stored in contiguous memory, you can access this
+//! slice [directly](Arena::as_slice) and get all the benefits that you would from
+//! having an array or a [`Vec`], such as parallel iterators with [`rayon`](https://crates.io/crates/rayon).
+//!
+//! # Examples
+//!
+//! ```
+//! use arena::Arena;
+//!
+//! // create an arena and add 3 values to it
+//! let mut arena = Arena::new();
+//! let a = arena.insert('A');
+//! let b = arena.insert('B');
+//! let c = arena.insert('C');
+//!
+//! // we can access the slice of values directly
+//! assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
+//!
+//! // or we can use the returned IDs to access them
+//! assert_eq!(arena.get(a), Some(&'A'));
+//! assert_eq!(arena.get(b), Some(&'B'));
+//! assert_eq!(arena.get(c), Some(&'C'));
+//!
+//! // remove a value from the middle
+//! arena.remove(b);
+//!
+//! // the slice now only has the remaining values
+//! assert_eq!(arena.as_slice(), &['A', 'C']);
+//!
+//! // even though `C` changed position, its ID is still valid
+//! assert_eq!(arena.get(a), Some(&'A'));
+//! assert_eq!(arena.get(b), None);
+//! assert_eq!(arena.get(c), Some(&'C'));
+//!
+//! // IDs are copyable so they can be passed around easily
+//! let some_id = c;
+//! assert_eq!(arena.get(some_id), Some(&'C'));
+//! ```
+//!
+//! # Iteration
+//!
+//! Because arena implements [`Deref<Target = [T]>`](Arena::deref), you can iterate over
+//! the values in the contiguous slice directly:
+//!
+//! ```
+//! # use arena::Arena;
+//! let mut arena = Arena::from(['A', 'B', 'C']);
+//!
+//! let mut iter = arena.iter();
+//! assert_eq!(iter.next(), Some(&'A'));
+//! assert_eq!(iter.next(), Some(&'B'));
+//! assert_eq!(iter.next(), Some(&'C'));
+//! assert_eq!(iter.next(), None);
+//! ```
+//!
+//! Alternatively, you can iterate over ID/value pairs:
+//!
+//! ```
+//! # use arena::Arena;
+//! let mut arena = Arena::new();
+//! let a = arena.insert('A');
+//! let b = arena.insert('B');
+//! let c = arena.insert('C');
+//!
+//! let mut pairs = arena.pairs();
+//! assert_eq!(pairs.next(), Some((a, &'A')));
+//! assert_eq!(pairs.next(), Some((b, &'B')));
+//! assert_eq!(pairs.next(), Some((c, &'C')));
+//! assert_eq!(pairs.next(), None);
+//! ```
+//!
+//! Or iterate over just the IDs:
+//!
+//! ```
+//! # use arena::Arena;
+//! # let mut arena = Arena::new();
+//! # let a = arena.insert('A');
+//! # let b = arena.insert('B');
+//! # let c = arena.insert('C');
+//! let mut ids = arena.ids();
+//! assert_eq!(ids.next(), Some(a));
+//! assert_eq!(ids.next(), Some(b));
+//! assert_eq!(ids.next(), Some(c));
+//! assert_eq!(ids.next(), None);
+//! ```
+//!
+//! # Performance
+//!
+//! Lookups by ID are only slightly slower than indexing into a [`Vec`], and like
+//! a vector they do not take longer even when the collection grows. To provide this
+//! ability, though, adding and removing from the arena has more overhead than a vector.
+//!
+//! To keep removal fast, the arena uses a "pop & swap" method to remove values, meaning
+//! the last value will get moved into the removed value's position. The ID of that value
+//! will then get remapped to prevent it from being invalidated. Because of this, you
+//! should never assume the values or IDs in an arena remain in the order you added them.
+
 use std::cmp::Ordering;
 use std::ops::{Deref, Index, IndexMut};
 
@@ -30,110 +135,8 @@ fn test() {
     println!("{}", arena[e]);
 }
 
-/// A contiguous growable container which assigns and returns IDs to values when
-/// they are added to it.
-///
-/// These IDs can then be used to access their corresponding values at any time,
-/// like an index, except that they remain valid even if other items in the arena
-/// are removed or if the arena is sorted.
-///
-/// A big advantage of this collection over something like a [`HashMap`](std::collections::HashMap)
-/// is that, since the values are stored in contiguous memory, you can access this
-/// slice [directly](Arena::as_slice) and get all the benefits that you would from
-/// having an array or a [`Vec`], such as parallel iterators with [`rayon`](https://crates.io/crates/rayon).
-///
-/// # Examples
-///
-/// ```
-/// use arena::Arena;
-///
-/// // create an arena and add 3 values to it
-/// let mut arena = Arena::new();
-/// let a = arena.insert('A');
-/// let b = arena.insert('B');
-/// let c = arena.insert('C');
-///
-/// // we can access the slice of values directly
-/// assert_eq!(arena.as_slice(), &['A', 'B', 'C']);
-///
-/// // or we can use the returned IDs to access them
-/// assert_eq!(arena.get(a), Some(&'A'));
-/// assert_eq!(arena.get(b), Some(&'B'));
-/// assert_eq!(arena.get(c), Some(&'C'));
-///
-/// // remove a value from the middle
-/// arena.remove(b);
-///
-/// // the slice now only has the remaining values
-/// assert_eq!(arena.as_slice(), &['A', 'C']);
-///
-/// // even though `C` changed position, its ID is still valid
-/// assert_eq!(arena.get(a), Some(&'A'));
-/// assert_eq!(arena.get(b), None);
-/// assert_eq!(arena.get(c), Some(&'C'));
-///
-/// // IDs are copyable so they can be passed around easily
-/// let some_id = c;
-/// assert_eq!(arena.get(some_id), Some(&'C'));
-/// ```
-///
-/// # Iteration
-///
-/// Because arena implements [`Deref<Target = [T]>`](Arena::deref), you can iterate over
-/// the values in the contiguous slice directly:
-///
-/// ```
-/// # use arena::Arena;
-/// let mut arena = Arena::from(['A', 'B', 'C']);
-///
-/// let mut iter = arena.iter();
-/// assert_eq!(iter.next(), Some(&'A'));
-/// assert_eq!(iter.next(), Some(&'B'));
-/// assert_eq!(iter.next(), Some(&'C'));
-/// assert_eq!(iter.next(), None);
-/// ```
-///
-/// Alternatively, you can iterate over ID/value pairs:
-///
-/// ```
-/// # use arena::Arena;
-/// let mut arena = Arena::new();
-/// let a = arena.insert('A');
-/// let b = arena.insert('B');
-/// let c = arena.insert('C');
-///
-/// let mut pairs = arena.pairs();
-/// assert_eq!(pairs.next(), Some((a, &'A')));
-/// assert_eq!(pairs.next(), Some((b, &'B')));
-/// assert_eq!(pairs.next(), Some((c, &'C')));
-/// assert_eq!(pairs.next(), None);
-/// ```
-///
-/// Or iterate over just the IDs:
-///
-/// ```
-/// # use arena::Arena;
-/// # let mut arena = Arena::new();
-/// # let a = arena.insert('A');
-/// # let b = arena.insert('B');
-/// # let c = arena.insert('C');
-/// let mut ids = arena.ids();
-/// assert_eq!(ids.next(), Some(a));
-/// assert_eq!(ids.next(), Some(b));
-/// assert_eq!(ids.next(), Some(c));
-/// assert_eq!(ids.next(), None);
-/// ```
-///
-/// # Performance
-///
-/// Lookups by ID are only slightly slower than indexing into a [`Vec`], and like
-/// a vector they do not take longer even when the collection grows. To provide this
-/// ability, though, adding and removing from the arena has more overhead than a vector.
-///
-/// To keep removal fast, the arena uses a "pop & swap" method to remove values, meaning
-/// the last value will get moved into the removed value's position. The ID of that value
-/// will then get remapped to prevent it from being invalidated. Because of this, you
-/// should never assume the values or IDs in an arena remain in the order you added them.
+/// A contiguous growable container which assigns and returns IDs to values when they are
+/// added to it.
 #[derive(Debug, Clone)]
 pub struct Arena<T> {
     values: Vec<T>,
