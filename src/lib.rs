@@ -564,6 +564,8 @@ impl Ord for ArenaId {
 }
 
 /// Iterator over an arena's ID/value pairs.
+///
+/// This struct is created by the [`pairs`](Arena::pairs) method on [`Arena`].
 pub struct Pairs<'a, T> {
     iter: std::iter::Enumerate<std::slice::Iter<'a, T>>,
     slots: &'a [Slot],
@@ -590,6 +592,8 @@ impl<'a, T> Iterator for Pairs<'a, T> {
 }
 
 /// Mutable iterator over an arena's ID/value pairs.
+///
+/// This struct is created by the [`pairs_mut`](Arena::pairs_mut) method on [`Arena`].
 pub struct PairsMut<'a, T> {
     iter: std::iter::Enumerate<std::slice::IterMut<'a, T>>,
     slots: &'a [Slot],
@@ -616,6 +620,8 @@ impl<'a, T> Iterator for PairsMut<'a, T> {
 }
 
 /// Iterator over an arena's IDs.
+///
+/// This struct is created by the [`ids`](Arena::ids) method on [`Arena`].
 pub struct Ids<'a> {
     iter: std::iter::Enumerate<std::slice::Iter<'a, Slot>>,
 }
