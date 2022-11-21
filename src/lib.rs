@@ -30,6 +30,28 @@ fn test() {
     println!("{}", arena[e]);
 }
 
+/// A contiguous growable array type, like `Vec<T>`, which assigns and returns
+/// IDs to values when they are added to it.
+///
+/// These IDs can then be used to access their corresponding values at any time,
+/// like an index, except that they remain valid even if other items in the arena
+/// are removed or if the arena is sorted.
+///
+/// Lookups by ID are only slightly slower than indexing into a `Vec<T>`, and like
+/// a vector they do not take longer even when the collection grows. To provide this
+/// ability, though, adding and removing from the arena has more overhead than a vector.
+///
+/// To keep removal fast, the arena uses a "pop & swap" method to remove values, meaning
+/// the last value will get moved into the removed value's position. The ID of that value
+/// will then get remapped to prevent it from being invalidated. Because of this, the
+/// values in an arena are never guaranteed to be in any order unless you call `sort`.
+///
+/// Another advantage of this collection is that, since the values are in contiguous
+/// memory, you can access this slice directly and get all the benefits that you would
+/// from having a `Vec<T>` directly, such as parallel iterators with `rayon`.
+///
+/// It is also memory efficient, and keeps only one other vector alongside the values
+/// vector in order to re-map IDs and keep them valid.
 #[derive(Debug, Clone)]
 pub struct Arena<T> {
     values: Vec<T>,
@@ -89,8 +111,10 @@ impl<T> Arena<T> {
     ///
     /// # NOTE
     ///
-    /// Re-arranging the values in this mutable slice will invalidate
-    /// the IDs given when they were added to the arena.
+    /// Re-arranging the values in this mutable slice will invalidate the IDs given
+    /// when they were added to the arena. It is recommended only to use this slice
+    /// for modifying the values in place, either in sequence or in parallel (for
+    /// example, with the `rayon` library).
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self.values.as_mut_slice()
@@ -138,6 +162,15 @@ impl<T> Arena<T> {
                 version: *version,
                 index,
             }),
+            _ => None,
+        }
+    }
+
+    /// Returns the index of the value corresponding to the ID if it is in the arena.
+    #[inline]
+    pub fn index_of(&self, id: ArenaId) -> Option<usize> {
+        match &self.slots.get(id.index)?.state {
+            State::Used { version, .. } if *version == id.version => Some(id.index),
             _ => None,
         }
     }
@@ -257,8 +290,20 @@ impl<T> Arena<T> {
         self.values.clear();
     }
 
-    /// Swaps values from the two positions in the arena without
-    /// invalidating their IDS.
+    /// Swaps the position of the two values corresponding to the provided IDs without
+    /// invalidating them.
+    #[inline]
+    pub fn swap_positions(&mut self, i: ArenaId, j: ArenaId) -> bool {
+        if let Some(i) = self.index_of(i) {
+            if let Some(j) = self.index_of(j) {
+                self.swap(i, j);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Swaps values from the two positions in the arena without invalidating their IDS.
     #[inline]
     pub fn swap(&mut self, i: usize, j: usize) {
         self.values.swap(i, j);
