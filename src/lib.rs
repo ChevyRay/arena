@@ -410,7 +410,7 @@ impl<T> Arena<T> {
     /// ```
     #[inline]
     pub fn id_at(&self, index: usize) -> Option<ArenaId> {
-        if index <= self.len() {
+        if index >= self.len() {
             return None;
         }
         let slot = self.slots.get(index)?.value_slot;
@@ -424,6 +424,18 @@ impl<T> Arena<T> {
     }
 
     /// Returns the index of the value corresponding to the ID if it is in the arena.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C', 'D']);
+    /// let e = arena.insert('E');
+    ///
+    /// arena.remove_at(3);
+    ///
+    ///
+    /// ```
     #[inline]
     pub fn index_of(&self, id: ArenaId) -> Option<usize> {
         match &self.slots.get(id.index)?.state {
