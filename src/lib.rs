@@ -30,8 +30,8 @@ fn test() {
     println!("{}", arena[e]);
 }
 
-/// A contiguous growable array type, like `Vec<T>`, which assigns and returns
-/// IDs to values when they are added to it.
+/// A contiguous growable container which assigns and returns IDs to values when
+/// they are added to it.
 ///
 /// These IDs can then be used to access their corresponding values at any time,
 /// like an index, except that they remain valid even if other items in the arena
@@ -538,8 +538,11 @@ enum State {
     Free { next_free: Option<usize> },
 }
 
-/// An ID assigned to a value when it was added to an arena. It can be used
-/// to access the value in the arena even when values are removed or re-ordered.
+/// An ID assigned to a value when it was added to an arena.
+///
+/// Unlike an index, this ID will remain a valid handle to the value even
+/// if other values are removed from the arena and the value vector gets
+/// re-ordered.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, Hash)]
 pub struct ArenaId {
     version: u64,
