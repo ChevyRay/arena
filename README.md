@@ -7,7 +7,11 @@ These IDs can then be used to access their corresponding values at
 any time, like an index, except that they remain valid even if other
 items in the arena are removed or if the arena is sorted.
 
-## Example
+- faster insersion, removal, and lookup speed than a `HashMap`
+- values are stored in a contiguous vector you can access/iterate
+- memory and cache efficient: uses only 2 heap-allocated vectors
+
+## Examples
 
 ```rust
 use arena::Arena;
@@ -52,65 +56,3 @@ assert_eq!(arena.get(b), Some(&'B'));
 assert_eq!(arena.get(c), None);
 assert_eq!(arena.get(d), Some(&'D'));
 ```
-
-## Why Use This?
-
-A common problem encountered in Rust is that the restrictions that
-lifetimes put on references means they can't be used as freely as
-references in languages like C# or JS, or pointers in C++.
-
-### The Graph Problem
-
-For example, in C# you could represent a graph of connected nodes
-like this:
-
-```cs
-class Graph {
-    List<Node> nodes;
-}
-
-class Node {
-    List<Node> connections;
-}
-```
-
-Trying to do this in Rust is much more difficult, because as soon
-as a `Node` is trying to store a reference, the list of nodes is
-no longer mutable. Beginners will often, after losing the battle with
-lifetimes, try to resort to combinations ofsmart pointers such as
-`Rc` and `RefCell` to make this work.
-
-### The Alternative
-
-A simple alternative to this is to not use references to the nodes
-directly outside of the main list, but instead to refer to them by
-their index in that list. For example:
-
-```rust
-struct Graph {
-    nodes: Vec<Node>,
-}
-
-struct Node {
-    connections: Vec<usize>,
-}
-```
-
-This works fine, and is quite performant, until you need to be
-able to remove nodes from the main list. As soon as you do this,
-the indices of nodes have changed, and the connection lists can
-easily and silently get invalidated.
-
-Also, some use-cases require very large amounts of nodes, such as
-a game engine where the graph might be made up of thousands of live
-game objects, dozens being created and destroyed at any moment. In
-this situation, constantly re-validating all the nodes and the
-shifting node list can harm performance and creates a lot of places
-for bugs to sneak through.
-
-### Solving with a HashMap
-
-One solution is to use a `HashMap`, where each node is assigned a
-unique ID (maybe using something like [`uuid`](https://crates.io/crates/uuid)),
-and then by only storing those IDs, you can bypass the reference
-problem and access entities only when you need them.
