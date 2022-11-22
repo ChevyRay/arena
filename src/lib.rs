@@ -1195,3 +1195,121 @@ impl<'a> Iterator for Ids<'a> {
         }
     }
 }
+
+mod ser {
+    use crate::State;
+    use serde::de::Visitor;
+    use serde::ser::SerializeStruct;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::fmt::Formatter;
+
+    impl<T: Serialize> Serialize for crate::Arena<T> {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut s = serializer.serialize_struct("Arena", 2)?;
+            s.serialize_field("next_uid", &self.next_uid)?;
+
+            let entries: Vec<Entry<'_, T>> = self
+                .pairs()
+                .map(|(id, val)| Entry {
+                    uid: id.uid,
+                    idx: id.idx,
+                    val: val,
+                })
+                .collect();
+            s.serialize_field("entries", &entries)?;
+
+            s.end()
+        }
+    }
+
+    impl<'de, T: Deserialize<'de>> Deserialize<'de> for crate::Arena<T> {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let mut de: DeArena<T> = DeArena::deserialize(deserializer)?;
+
+            de.entries.sort_by(|a, b| a.idx.cmp(&b.idx));
+
+            let mut slots = Vec::new();
+            let mut next_value_slot = 0;
+            let mut next_value = 0;
+
+            let mut first_free = None;
+            for e in &de.entries {
+                // push free slots until we reach the entry's index
+                while slots.len() < e.idx {
+                    slots.push(crate::Slot {
+                        value_slot: de.entries[next_value_slot].idx,
+                        state: crate::State::Free {
+                            next_free: first_free.replace(slots.len()),
+                        },
+                    });
+                    next_value_slot += 1;
+                }
+
+                // insert the entry
+                slots.push(crate::Slot {
+                    value_slot: de.entries[next_value_slot].idx,
+                    state: crate::State::Used {
+                        uid: e.uid,
+                        value: next_value,
+                    },
+                });
+
+                next_value_slot += 1;
+                next_value += 1;
+            }
+
+            let values = de.entries.into_iter().map(|e| e.val).collect();
+
+            Ok(Self {
+                next_uid: de.next_uid,
+                slots,
+                values,
+                first_free,
+            })
+        }
+    }
+
+    #[derive(Serialize)]
+    struct Entry<'a, T> {
+        uid: u64,
+        idx: usize,
+        val: &'a T,
+    }
+
+    #[derive(Deserialize)]
+    struct DeEntry<T> {
+        uid: u64,
+        idx: usize,
+        val: T,
+    }
+
+    #[derive(Deserialize)]
+    struct DeArena<T> {
+        next_uid: u64,
+        entries: Vec<DeEntry<T>>,
+    }
+
+    #[test]
+    fn test_ser() {
+        use crate::Arena;
+
+        let mut arena = Arena::new();
+        arena.insert('A');
+        arena.insert('B');
+        arena.insert('C');
+
+        println!("{:#?}", arena);
+        println!();
+        let json = serde_json::to_string_pretty(&arena).unwrap();
+        println!("{}", json);
+        println!();
+        let arena: Arena<char> = serde_json::from_str(&json).unwrap();
+        println!("{:#?}", arena);
+    }
+}
