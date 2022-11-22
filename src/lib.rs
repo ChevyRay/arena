@@ -106,35 +106,6 @@
 use std::cmp::Ordering;
 use std::ops::{Deref, Index, IndexMut};
 
-#[test]
-fn test() {
-    let mut arena = Arena::new();
-
-    let d = arena.insert('D');
-    let c = arena.insert('C');
-    let b = arena.insert('B');
-    let e = arena.insert('E');
-    let a = arena.insert('A');
-
-    println!("{:?}", arena.iter().collect::<Vec<_>>());
-
-    println!("{}", arena[a]);
-    println!("{}", arena[b]);
-    println!("{}", arena[c]);
-    println!("{}", arena[d]);
-    println!("{}", arena[e]);
-
-    arena.sort();
-
-    println!("{:?}", arena.iter().collect::<Vec<_>>());
-
-    println!("{}", arena[a]);
-    println!("{}", arena[b]);
-    println!("{}", arena[c]);
-    println!("{}", arena[d]);
-    println!("{}", arena[e]);
-}
-
 /// A contiguous growable container which assigns and returns IDs to values when they are
 /// added to it.
 #[derive(Debug, Clone)]
@@ -1313,23 +1284,5 @@ mod ser {
     struct DeArena<T> {
         next_uid: u64,
         entries: Vec<DeEntry<T>>,
-    }
-
-    #[test]
-    fn test_ser() {
-        use crate::Arena;
-
-        let mut arena = Arena::new();
-        arena.insert('A');
-        arena.insert('B');
-        arena.insert('C');
-
-        println!("{:#?}", arena);
-        println!();
-        let json = serde_json::to_string_pretty(&arena).unwrap();
-        println!("{}", json);
-        println!();
-        let arena: Arena<char> = serde_json::from_str(&json).unwrap();
-        println!("{:#?}", arena);
     }
 }
