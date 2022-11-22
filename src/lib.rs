@@ -94,9 +94,9 @@
 //!
 //! # Performance
 //!
-//! Lookups by ID are only slightly slower than indexing into a [`Vec`], and like
+//! Lookups by ID do a few checks, so they are slower than `Vec<T>` indexing, but like
 //! a vector they do not take longer even when the collection grows. To provide this
-//! ability, though, adding and removing from the arena has more overhead than a vector.
+//! ability, though, adding and removing from the arena has more overhead as well.
 //!
 //! To keep removal fast, the arena uses a "pop & swap" method to remove values, meaning
 //! the last value will get moved into the removed value's position. The ID of that value
