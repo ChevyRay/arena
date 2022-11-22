@@ -1215,6 +1215,7 @@ impl<'a> Iterator for Ids<'a> {
     }
 }
 
+#[cfg(feature = "serde")]
 mod ser {
     use crate::State;
     use serde::de::Visitor;
@@ -1235,7 +1236,7 @@ mod ser {
                 .map(|(id, val)| Entry {
                     uid: id.uid,
                     idx: id.idx,
-                    val: val,
+                    val,
                 })
                 .collect();
             s.serialize_field("entries", &entries)?;
