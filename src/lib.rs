@@ -843,6 +843,25 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns the arena as a simple vector of its values.
+    ///
+    /// This simply discards the rest of the arena and just returns the vector
+    /// that the arena was already using to store the values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::from(['A', 'B', 'C']);
+    /// arena.insert('D');
+    ///
+    /// let vec = arena.to_vec();
+    /// assert_eq!(&vec, &['A', 'B', 'C', 'D']);
+    /// ```
+    pub fn to_vec(self) -> Vec<T> {
+        self.values
+    }
+
     /// Returns an iterator that allows modifying each value.
     ///
     /// The iterator yields all items from start to end.
