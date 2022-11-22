@@ -270,7 +270,7 @@ impl<T> Arena<T> {
     }
 
     /// Returns a reference to the value assigned with the ID, or `None` if the
-    /// value was removed.
+    /// value is not in the arena.
     ///
     /// # Examples
     ///
@@ -300,7 +300,7 @@ impl<T> Arena<T> {
     }
 
     /// Returns a mutable reference to the value assigned with the ID, or `None`
-    /// if the value was removed.
+    /// if the value is not in the arena.
     ///
     /// # Examples
     ///
@@ -327,6 +327,48 @@ impl<T> Arena<T> {
         match &self.slots.get(id.idx)?.state {
             State::Used { uid, value } if *uid == id.uid => Some(&mut self.values[*value]),
             _ => None,
+        }
+    }
+
+    /// Returns a pair of mutable references correspding to the pair of
+    /// supplied IDs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use arena::Arena;
+    /// let mut arena = Arena::new();
+    /// let a = arena.insert('A');
+    /// let b = arena.insert('B');
+    ///
+    /// assert_eq!(arena.as_slice(), &['A', 'B']);
+    ///
+    /// match arena.get2_mut(a, b) {
+    ///     (Some(val_a), Some(val_b)) => {
+    ///         *val_a = 'X';
+    ///         *val_b = 'Y';
+    ///     }
+    ///     _ => panic!()
+    /// }
+    ///
+    /// assert_eq!(arena.as_slice(), &['X', 'Y']);
+    ///
+    /// ```
+    pub fn get2_mut(&mut self, a: ArenaId, b: ArenaId) -> (Option<&mut T>, Option<&mut T>) {
+        match (self.index_of(a), self.index_of(b)) {
+            (Some(a), Some(b)) => {
+                assert_ne!(a, b);
+                let (lower, upper) = self.values.split_at_mut(a.max(b));
+                let (a, b) = if a < b {
+                    (&mut lower[a], &mut upper[0])
+                } else {
+                    (&mut lower[0], &mut upper[b])
+                };
+                (Some(a), Some(b))
+            }
+            (Some(a), None) => (Some(&mut self.values[a]), None),
+            (None, Some(b)) => (None, Some(&mut self.values[b])),
+            (None, None) => (None, None),
         }
     }
 
