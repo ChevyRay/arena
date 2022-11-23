@@ -2,12 +2,16 @@
 name = "arena"
 version = "0.1.0"
 edition = "2021"
+description = "A contiguous growable container which assigns and returns IDs to values when they are added to it."
+license-file = "LICENSE"
+authors = ["Chevy Ray Johnston"]
+repository = "https://github.com/ChevyRay/arena"
+keywords = ["arena", "contiguous", "generation", "id", "ecs", "index"]
+categories = ["memory-management", "rust-patterns", "data-structures", "game-development"]
+readme = "./README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = { version = "1.0.147", features = ["derive"] }
+serde = { version = "1.0.147", optional = true, features = ["derive"] }
 serde_json = "1.0.88"
-
-[features]
-serde = []
