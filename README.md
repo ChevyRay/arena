@@ -14,8 +14,6 @@ items in the arena are removed or if the arena is sorted.
 ## Examples
 
 ```rust
-use arena::Arena;
-
 // create a new empty arena
 let mut arena = Arena::new();
 
@@ -42,17 +40,17 @@ assert_eq!(arena.as_slice(), &['A', 'D', 'C']);
 
 // even though 'D' moved, its ID is still valid and can be used
 assert_eq!(arena.get(a), Some(&'A'));
-assert_eq!(arena.get(b), Some(&'B'));
-assert_eq!(arena.get(c), None);
+assert_eq!(arena.get(b), None);
+assert_eq!(arena.get(c), Some(&'C'));
 assert_eq!(arena.get(d), Some(&'D'));
 
 // we can even sort the values to order them
 arena.sort();
 
 // and all the IDs will still be valid
-assert_eq!(arena.as_slice(), &['A', 'B', 'D']);
+assert_eq!(arena.as_slice(), &['A', 'C', 'D']);
 assert_eq!(arena.get(a), Some(&'A'));
-assert_eq!(arena.get(b), Some(&'B'));
-assert_eq!(arena.get(c), None);
+assert_eq!(arena.get(b), None);
+assert_eq!(arena.get(c), Some(&'C'));
 assert_eq!(arena.get(d), Some(&'D'));
 ```
