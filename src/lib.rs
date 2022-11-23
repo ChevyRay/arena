@@ -526,37 +526,34 @@ impl<T> Arena<T> {
     where
         F: FnOnce(ArenaId) -> T,
     {
+        let value = self.values.len();
         let idx = match self.first_free.take() {
-            // if there is a free slot available, assign the value to it
-            Some(index) => {
-                let slot = &mut self.slots[index];
-                match slot.state.clone() {
+            Some(idx) => {
+                match &self.slots[idx].state {
                     State::Free { next_free } => {
-                        self.first_free = next_free;
-                        slot.value_slot = index;
-                        slot.state = State::Used {
-                            uid: self.next_uid,
-                            value: self.values.len(),
-                        };
-                        index
+                        self.first_free = *next_free;
                     }
                     _ => unreachable!(),
                 }
+                self.slots[idx].state = State::Used {
+                    uid: self.next_uid,
+                    value,
+                };
+                idx
             }
-
-            // if there is no free slot available, assign the value to a new one
             None => {
-                let index = self.slots.len();
+                let idx = self.slots.len();
                 self.slots.push(Slot {
-                    value_slot: index,
+                    value_slot: 0,
                     state: State::Used {
                         uid: self.next_uid,
-                        value: self.values.len(),
+                        value,
                     },
                 });
-                index
+                idx
             }
         };
+        self.slots[value].value_slot = idx;
         let id = ArenaId {
             uid: self.next_uid,
             idx,
@@ -581,36 +578,32 @@ impl<T> Arena<T> {
     ///
     /// ```
     pub fn remove(&mut self, id: ArenaId) -> Option<T> {
-        let to_slot = {
-            let slot = self.slots.get_mut(id.idx)?;
-
-            // get the slot of the removed value
-            let value = match &slot.state {
-                State::Used { uid, value } if *uid == id.uid => *value,
-                _ => return None,
-            };
-
-            // free up the value's slot
-            slot.state = State::Free {
-                next_free: self.first_free.replace(id.idx),
-            };
-
-            value
+        // get the position of the removed value
+        let removed_val = match &self.slots[id.idx].state {
+            State::Used { uid, value } if *uid == id.uid => *value,
+            _ => return None,
         };
 
-        let from_slot = self.values.len() - 1;
-        if from_slot != to_slot {
-            // the value that was at the back is now in the removed spot
-            self.slots[to_slot].value_slot = self.slots[from_slot].value_slot;
-            match &mut self.slots[from_slot].state {
-                State::Used { value, .. } => *value = to_slot,
+        // free up the slot of the removed value
+        self.slots[id.idx].state = State::Free {
+            next_free: self.first_free.replace(id.idx),
+        };
+
+        // check if the removed value is the last in the list
+        let last_val = self.values.len() - 1;
+        if removed_val < last_val {
+            // if not, move the last value into the removed value's slot
+            let last_slot = self.slots[last_val].value_slot;
+            self.slots[removed_val].value_slot = last_slot;
+            match &mut self.slots[last_slot].state {
+                State::Used { uid, value } => *value = removed_val,
                 _ => unreachable!(),
             }
 
-            // pop + swap out the removed value
-            Some(self.values.swap_remove(to_slot))
+            // then also move the value into the removed value's position
+            Some(self.values.swap_remove(removed_val))
         } else {
-            self.values.pop()
+            self.pop()
         }
     }
 
@@ -1327,4 +1320,33 @@ mod ser {
         next_uid: u64,
         entries: Vec<DeEntry<T>>,
     }
+}
+
+#[test]
+fn rain_test() {
+    let mut arena = Arena::new();
+    let a = arena.insert("a");
+    let b = arena.insert("b");
+    let c = arena.insert("c");
+    let d = arena.insert("d");
+    let e = arena.insert("e");
+
+    arena.remove(b);
+    arena.remove(a);
+
+    let f = arena.insert("f");
+    let g = arena.insert("g");
+
+    assert_eq!(*arena.get(c).unwrap(), "c");
+    assert_eq!(*arena.get(d).unwrap(), "d");
+    assert_eq!(*arena.get(e).unwrap(), "e");
+    assert_eq!(*arena.get(f).unwrap(), "f");
+    assert_eq!(*arena.get(g).unwrap(), "g");
+
+    arena.remove(f);
+
+    assert_eq!(*arena.get(c).unwrap(), "c");
+    assert_eq!(*arena.get(d).unwrap(), "d");
+    assert_eq!(*arena.get(g).unwrap(), "g");
+    assert_eq!(*arena.get(e).unwrap(), "e");
 }
