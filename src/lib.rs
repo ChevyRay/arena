@@ -540,7 +540,7 @@ impl<T> Arena<T> {
                         };
                         index
                     }
-                    _ => panic!("expected free slot"),
+                    _ => unreachable!(),
                 }
             }
 
@@ -785,7 +785,7 @@ impl<T> Arena<T> {
                 *value_slot = slot_j;
                 *value = j;
             }
-            _ => panic!("invalid slot"),
+            _ => unreachable!(),
         };
         match &mut self.slots[slot_j] {
             Slot {
@@ -795,7 +795,7 @@ impl<T> Arena<T> {
                 *value_slot = slot_i;
                 *value = i;
             }
-            _ => panic!("invalid slot"),
+            _ => unreachable!(),
         };
     }
 
@@ -1181,7 +1181,7 @@ impl<'a, T> Iterator for Pairs<'a, T> {
         let idx = self.slots[idx].value_slot;
         match &self.slots[idx].state {
             State::Used { uid, .. } => Some((ArenaId { uid: *uid, idx }, val)),
-            _ => panic!("expected used slot"),
+            _ => unreachable!(),
         }
     }
 }
@@ -1203,7 +1203,7 @@ impl<'a, T> Iterator for PairsMut<'a, T> {
         let idx = self.slots[idx].value_slot;
         match &self.slots[idx].state {
             State::Used { uid, .. } => Some((ArenaId { uid: *uid, idx }, val)),
-            _ => panic!("expected used slot"),
+            _ => unreachable!(),
         }
     }
 }
