@@ -471,6 +471,15 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns the ID that will be assigned to the next inserted value.
+    #[inline]
+    pub fn next_id(&self) -> ArenaId {
+        ArenaId {
+            idx: self.first_free.unwrap_or(self.slots.len()),
+            uid: self.next_uid,
+        }
+    }
+
     /// Inserts a value in the arena, returning an ID that can be used to
     /// access the value at a later time, even if the values were re-arranged.
     ///
