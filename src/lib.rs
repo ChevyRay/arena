@@ -1137,7 +1137,7 @@ enum State {
 /// re-ordered.
 ///
 /// They implement `Copy` and so can be passed around freely.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ArenaId {
     uid: u64,
     idx: usize,
