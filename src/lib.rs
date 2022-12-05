@@ -596,7 +596,7 @@ impl<T> Arena<T> {
             let last_slot = self.slots[last_val].value_slot;
             self.slots[removed_val].value_slot = last_slot;
             match &mut self.slots[last_slot].state {
-                State::Used { uid, value } => *value = removed_val,
+                State::Used { value, .. } => *value = removed_val,
                 _ => unreachable!(),
             }
 
@@ -1349,4 +1349,39 @@ fn rain_test() {
     assert_eq!(*arena.get(d).unwrap(), "d");
     assert_eq!(*arena.get(g).unwrap(), "g");
     assert_eq!(*arena.get(e).unwrap(), "e");
+}
+
+#[test]
+fn rand_test() {
+    let mut arena = Arena::new();
+    let mut map = std::collections::HashMap::new();
+
+    // add A-Z in random order and store their respective IDs
+    let mut chars: Vec<char> = "QWERTYUIOPLKJHGFDSAZXCVBNM".chars().collect();
+    for &chr in &chars {
+        let id = arena.insert(chr);
+        map.insert(chr, id);
+    }
+
+    // sort the characters from A-Z
+    chars.sort();
+
+    // remove the first 10 characters from the alphabet
+    for &chr in chars.iter().take(10) {
+        let id = *map.get(&chr).unwrap();
+        assert_eq!(arena.remove(id), Some(chr));
+    }
+
+    // insert 10 digits
+    for chr in "0123456789".chars() {
+        let id = arena.insert(chr);
+        map.insert(chr, id);
+        chars.push(chr);
+    }
+
+    // make sure every character's ID matches its stored one
+    for chr in chars.iter().skip(10) {
+        let id = *map.get(chr).unwrap();
+        assert_eq!(arena.get(id), Some(chr));
+    }
 }
